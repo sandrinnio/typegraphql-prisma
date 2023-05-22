@@ -1,9 +1,14 @@
 import { SourceFile } from "ts-morph";
+import { PrismaClient } from "@prisma/client";
+import { withOmit, withPolicy } from "@zenstackhq/runtime";
+
 import {
   generateGraphQLFieldsImport,
   generateGraphQLInfoImport,
 } from "./imports";
 import { GeneratorOptions } from "./options";
+
+export const db = new PrismaClient();
 
 export function generateHelpersFile(
   sourceFile: SourceFile,
@@ -50,12 +55,17 @@ export function generateHelpersFile(
   `);
 
   sourceFile.addStatements(/* ts */ `
+    function getUserId(req: any) {
+        return req.cognito?.sub;
+    }
     export function getPrismaFromContext(context: any) {
-      const prismaClient = context["${options.contextPrismaKey}"];
-      if (!prismaClient) {
-        throw new Error("Unable to find Prisma Client in GraphQL context. Please provide it under the \`context[\\"${options.contextPrismaKey}\\"]\` key.");
-      }
-      return prismaClient;
+        const userId = getUserId(context);
+        const user = typeof userId !== "string" ? undefined : { id: userId };
+        const prismaClient = withOmit(withPolicy(db, { user }));
+        if (!prismaClient) {
+            throw new Error("Unable to find Prisma Client in GraphQL context. Please provide it under the \`context[\\"${options.contextPrismaKey}\\"]\` key.");
+        }
+        return prismaClient;
     }
   `);
 
